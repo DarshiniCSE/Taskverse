@@ -1,0 +1,33 @@
+# Compiled Java class files
+*.class
+webapp/WEB-INF/classes/com/
+
+# Local sensitive database credentials
+webapp/WEB-INF/classes/db.properties
+db/db.properties
+
+# Build artifacts & package archives
+*.war
+target/
+build/
+dist/
+
+# IDE and Editor configuration
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local database credentials and secrets
+**/db.properties
+**/.env
+**/.env.*

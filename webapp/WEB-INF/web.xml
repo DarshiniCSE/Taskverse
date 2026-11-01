@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
+                             https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+         version="6.0">
+
+    <display-name>TaskVerse — Your Smart Productivity Workspace</display-name>
+    <description>Smart Task Management System for College Project Evaluation</description>
+
+    <!-- Task Management API Servlet -->
+    <servlet>
+        <servlet-name>TaskServlet</servlet-name>
+        <servlet-class>com.taskverse.servlet.TaskServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>TaskServlet</servlet-name>
+        <url-pattern>/api/tasks</url-pattern>
+    </servlet-mapping>
+
+    <!-- Dashboard Statistics API Servlet -->
+    <servlet>
+        <servlet-name>DashboardServlet</servlet-name>
+        <servlet-class>com.taskverse.servlet.DashboardServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>DashboardServlet</servlet-name>
+        <url-pattern>/api/dashboard</url-pattern>
+    </servlet-mapping>
+
+    <!-- Health Check Diagnostic API Servlet -->
+    <servlet>
+        <servlet-name>HealthServlet</servlet-name>
+        <servlet-class>com.taskverse.servlet.HealthServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>HealthServlet</servlet-name>
+        <url-pattern>/api/health</url-pattern>
+    </servlet-mapping>
+
+    <!-- Sticky Notes API Servlet -->
+    <servlet>
+        <servlet-name>NoteServlet</servlet-name>
+        <servlet-class>com.taskverse.servlet.NoteServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>NoteServlet</servlet-name>
+        <url-pattern>/api/notes</url-pattern>
+    </servlet-mapping>
+
+    <!-- Monthly Productivity Tracker API Servlet -->
+    <servlet>
+        <servlet-name>ProductivityServlet</servlet-name>
+        <servlet-class>com.taskverse.servlet.ProductivityServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>ProductivityServlet</servlet-name>
+        <url-pattern>/api/productivity</url-pattern>
+    </servlet-mapping>
+
+    <!-- Welcome File List -->
+    <welcome-file-list>
+        <welcome-file>index.html</welcome-file>
+    </welcome-file-list>
+
+</web-app>

@@ -1,0 +1,10 @@
+# =====================================================================
+# TaskVerse — Database Configuration Template
+# Copy this file to 'db/db.properties' and set your MySQL root password.
+# NEVER commit your actual password to GitHub or public repositories.
+# =====================================================================
+
+db.driver=com.mysql.cj.jdbc.Driver
+db.url=jdbc:mysql://localhost:3306/taskverse_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+db.user=root
+db.password=YOUR_MYSQL_PASSWORD_HERE
