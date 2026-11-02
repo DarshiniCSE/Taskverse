@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -16,12 +17,7 @@ import java.util.List;
 
 /**
  * TaskServlet
- * Controller handling CRUD operations for Tasks.
- * 
- * Demonstrates:
- * - Jakarta Servlet API (Tomcat 10.1 compliant)
- * - Separation of Concerns: Servlet handles HTTP protocols and JSON serialization,
- *   delegating all database operations to TaskDAO.
+ * Controller handling CRUD operations for Tasks with strict per-user authorization.
  */
 public class TaskServlet extends HttpServlet {
 
@@ -29,8 +25,11 @@ public class TaskServlet extends HttpServlet {
 
     @Override
     public void init() throws ServletException {
-        // Initialize DAO implementation through its interface
         this.taskDAO = new TaskDAOImpl();
+    }
+
+    public void setTaskDAO(TaskDAO taskDAO) {
+        this.taskDAO = taskDAO;
     }
 
     @Override
@@ -39,13 +38,13 @@ public class TaskServlet extends HttpServlet {
         setupResponseHeaders(response);
         PrintWriter out = response.getWriter();
 
+        int userId = getAuthenticatedUserId(request);
         String idParam = request.getParameter("id");
 
         try {
             if (idParam != null && !idParam.trim().isEmpty()) {
-                // Get single task by ID
                 int taskId = Integer.parseInt(idParam.trim());
-                Task task = taskDAO.getTaskById(taskId);
+                Task task = taskDAO.getTaskById(taskId, userId);
                 if (task != null) {
                     out.print("{\"success\":true,\"task\":" + task.toJSON() + "}");
                 } else {
@@ -53,8 +52,7 @@ public class TaskServlet extends HttpServlet {
                     out.print("{\"success\":false,\"message\":\"Task not found with ID: " + taskId + "\"}");
                 }
             } else {
-                // Get all tasks
-                List<Task> tasks = taskDAO.getAllTasks();
+                List<Task> tasks = taskDAO.getAllTasks(userId);
                 StringBuilder json = new StringBuilder();
                 json.append("{\"success\":true,\"count\":").append(tasks.size()).append(",\"tasks\":[");
                 for (int i = 0; i < tasks.size(); i++) {
@@ -71,7 +69,7 @@ public class TaskServlet extends HttpServlet {
             out.print("{\"success\":false,\"message\":\"Invalid task ID format.\"}");
         } catch (SQLException e) {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            out.print("{\"success\":false,\"message\":\"Database error: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Database service temporarily unavailable.\"}");
         }
     }
 
@@ -81,7 +79,6 @@ public class TaskServlet extends HttpServlet {
         setupResponseHeaders(response);
         PrintWriter out = response.getWriter();
 
-        // Check if this is an action override (e.g. action=delete, action=status, action=update)
         String action = request.getParameter("action");
         if (action == null) {
             action = "create";
@@ -105,10 +102,10 @@ public class TaskServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            out.print("{\"success\":false,\"message\":\"Database error: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Database operation failed.\"}");
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            out.print("{\"success\":false,\"message\":\"Request error: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Invalid request format.\"}");
         }
     }
 
@@ -121,7 +118,7 @@ public class TaskServlet extends HttpServlet {
             handleUpdate(request, response, out);
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            out.print("{\"success\":false,\"message\":\"Update failed: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Update request could not be processed.\"}");
         }
     }
 
@@ -134,12 +131,13 @@ public class TaskServlet extends HttpServlet {
             handleDelete(request, response, out);
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            out.print("{\"success\":false,\"message\":\"Delete failed: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Delete request could not be processed.\"}");
         }
     }
 
     private void handleCreate(HttpServletRequest request, HttpServletResponse response, PrintWriter out)
             throws SQLException, IOException {
+        int userId = getAuthenticatedUserId(request);
         String title = request.getParameter("title");
         String description = request.getParameter("description");
         String priority = request.getParameter("priority");
@@ -147,7 +145,6 @@ public class TaskServlet extends HttpServlet {
         String category = request.getParameter("category");
         String dueDate = request.getParameter("dueDate");
 
-        // Server-side validation
         if (title == null || title.trim().isEmpty()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             out.print("{\"success\":false,\"message\":\"Task title is required.\"}");
@@ -155,8 +152,8 @@ public class TaskServlet extends HttpServlet {
         }
 
         Task newTask = new Task(title.trim(), description, priority, status, category, dueDate);
-        Task created = taskDAO.createTask(newTask);
-        int totalPoints = taskDAO.getTotalPoints();
+        Task created = taskDAO.createTask(newTask, userId);
+        int totalPoints = taskDAO.getTotalPoints(userId);
 
         response.setStatus(HttpServletResponse.SC_CREATED);
         out.print("{\"success\":true,\"message\":\"Task created successfully.\",\"task\":" + created.toJSON() + ",\"pointsAwarded\":0,\"totalPoints\":" + totalPoints + "}");
@@ -164,6 +161,7 @@ public class TaskServlet extends HttpServlet {
 
     private void handleUpdate(HttpServletRequest request, HttpServletResponse response, PrintWriter out)
             throws SQLException, IOException {
+        int userId = getAuthenticatedUserId(request);
         String idParam = request.getParameter("taskId");
         if (idParam == null || idParam.trim().isEmpty()) {
             idParam = request.getParameter("id");
@@ -190,7 +188,7 @@ public class TaskServlet extends HttpServlet {
         }
 
         Task task = new Task(taskId, title.trim(), description, priority, status, category, dueDate, null, null);
-        PointResult result = taskDAO.updateTaskWithPoints(task);
+        PointResult result = taskDAO.updateTaskWithPoints(task, userId);
 
         if (result.isSuccess()) {
             out.print(result.toJSON());
@@ -202,6 +200,7 @@ public class TaskServlet extends HttpServlet {
 
     private void handleDelete(HttpServletRequest request, HttpServletResponse response, PrintWriter out)
             throws SQLException, IOException {
+        int userId = getAuthenticatedUserId(request);
         String idParam = request.getParameter("taskId");
         if (idParam == null || idParam.trim().isEmpty()) {
             idParam = request.getParameter("id");
@@ -214,8 +213,8 @@ public class TaskServlet extends HttpServlet {
         }
 
         int taskId = Integer.parseInt(idParam.trim());
-        boolean deleted = taskDAO.deleteTask(taskId);
-        int totalPoints = taskDAO.getTotalPoints();
+        boolean deleted = taskDAO.deleteTask(taskId, userId);
+        int totalPoints = taskDAO.getTotalPoints(userId);
 
         if (deleted) {
             out.print("{\"success\":true,\"message\":\"Task deleted successfully.\",\"pointsAwarded\":0,\"totalPoints\":" + totalPoints + "}");
@@ -227,6 +226,7 @@ public class TaskServlet extends HttpServlet {
 
     private void handleStatusUpdate(HttpServletRequest request, HttpServletResponse response, PrintWriter out)
             throws SQLException, IOException {
+        int userId = getAuthenticatedUserId(request);
         String idParam = request.getParameter("taskId");
         if (idParam == null || idParam.trim().isEmpty()) {
             idParam = request.getParameter("id");
@@ -240,7 +240,7 @@ public class TaskServlet extends HttpServlet {
         }
 
         int taskId = Integer.parseInt(idParam.trim());
-        PointResult result = taskDAO.updateTaskStatusWithPoints(taskId, status.trim());
+        PointResult result = taskDAO.updateTaskStatusWithPoints(taskId, status.trim(), userId);
 
         if (result.isSuccess()) {
             out.print(result.toJSON());
@@ -250,12 +250,18 @@ public class TaskServlet extends HttpServlet {
         }
     }
 
+    private int getAuthenticatedUserId(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null && session.getAttribute("USER_ID") != null) {
+            return (Integer) session.getAttribute("USER_ID");
+        }
+        throw new IllegalStateException("Unauthenticated request reached TaskServlet.");
+    }
+
     private void setupResponseHeaders(HttpServletResponse response) {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        response.setHeader("Access-Control-Allow-Origin", "*");
-        response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        response.setHeader("X-Content-Type-Options", "nosniff");
     }
 
     private String escapeJson(String input) {

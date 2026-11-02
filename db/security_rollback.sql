@@ -1,0 +1,58 @@
+-- =====================================================================
+-- TaskVerse — Security Baseline Database Rollback Script
+-- Target: MySQL 8.0+
+-- Description: Safely reverts multi-tenancy columns, foreign keys, and indexes.
+-- =====================================================================
+
+USE taskverse_db;
+
+-- 1. Drop foreign keys
+SET @drop_fk1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP FOREIGN KEY fk_task_points_task', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_task_points_task');
+PREPARE stmt1 FROM @drop_fk1; EXECUTE stmt1; DEALLOCATE PREPARE stmt1;
+
+SET @drop_fk2 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP FOREIGN KEY fk_task_points_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_task_points_user');
+PREPARE stmt2 FROM @drop_fk2; EXECUTE stmt2; DEALLOCATE PREPARE stmt2;
+
+SET @drop_fk3 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE notes DROP FOREIGN KEY fk_notes_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_notes_user');
+PREPARE stmt3 FROM @drop_fk3; EXECUTE stmt3; DEALLOCATE PREPARE stmt3;
+
+SET @drop_fk4 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE tasks DROP FOREIGN KEY fk_tasks_category', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_tasks_category');
+PREPARE stmt4 FROM @drop_fk4; EXECUTE stmt4; DEALLOCATE PREPARE stmt4;
+
+SET @drop_fk5 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE tasks DROP FOREIGN KEY fk_tasks_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_tasks_user');
+PREPARE stmt5 FROM @drop_fk5; EXECUTE stmt5; DEALLOCATE PREPARE stmt5;
+
+SET @drop_fk6 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP FOREIGN KEY fk_categories_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_categories_user');
+PREPARE stmt6 FROM @drop_fk6; EXECUTE stmt6; DEALLOCATE PREPARE stmt6;
+
+-- 2. Drop constraints & indexes
+SET @drop_idx1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP INDEX uq_categories_user_name', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'uq_categories_user_name');
+PREPARE stmt7 FROM @drop_idx1; EXECUTE stmt7; DEALLOCATE PREPARE stmt7;
+
+-- Restore unique on categories.name
+SET @restore_cat_idx = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD CONSTRAINT uq_categories_name UNIQUE (name)', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'uq_categories_name');
+PREPARE stmt8 FROM @restore_cat_idx; EXECUTE stmt8; DEALLOCATE PREPARE stmt8;
+
+-- 3. Drop columns
+SET @drop_col1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'task_points' AND COLUMN_NAME = 'user_id');
+PREPARE stmt9 FROM @drop_col1; EXECUTE stmt9; DEALLOCATE PREPARE stmt9;
+
+SET @drop_col2 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE notes DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'notes' AND COLUMN_NAME = 'user_id');
+PREPARE stmt10 FROM @drop_col2; EXECUTE stmt10; DEALLOCATE PREPARE stmt10;
+
+SET @drop_col3 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE tasks DROP COLUMN category_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'category_id');
+PREPARE stmt11 FROM @drop_col3; EXECUTE stmt11; DEALLOCATE PREPARE stmt11;
+
+SET @drop_col4 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE tasks DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'user_id');
+PREPARE stmt12 FROM @drop_col4; EXECUTE stmt12; DEALLOCATE PREPARE stmt12;
+
+SET @drop_col5 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP COLUMN is_system', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'is_system');
+PREPARE stmt13 FROM @drop_col5; EXECUTE stmt13; DEALLOCATE PREPARE stmt13;
+
+SET @drop_col6 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'user_id');
+PREPARE stmt14 FROM @drop_col6; EXECUTE stmt14; DEALLOCATE PREPARE stmt14;
+
+-- Users table is preserved or can be dropped if desired:
+-- DROP TABLE IF EXISTS users;
+
+SELECT 'Security rollback completed successfully.' AS status;

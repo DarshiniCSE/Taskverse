@@ -9,6 +9,7 @@ package com.taskverse.model;
  */
 public class Note {
     private int noteId;
+    private int userId;
     private String title;
     private String content;
     private String color; // yellow, pink, blue, green, purple
@@ -46,6 +47,14 @@ public class Note {
 
     public void setNoteId(int noteId) {
         this.noteId = noteId;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public void setUserId(int userId) {
+        this.userId = userId;
     }
 
     public String getTitle() {
@@ -99,6 +108,7 @@ public class Note {
     public String toJSON() {
         return "{"
             + "\"noteId\":" + noteId + ","
+            + "\"userId\":" + userId + ","
             + "\"title\":\"" + escapeJson(title) + "\","
             + "\"content\":\"" + escapeJson(content) + "\","
             + "\"color\":\"" + escapeJson(color) + "\","

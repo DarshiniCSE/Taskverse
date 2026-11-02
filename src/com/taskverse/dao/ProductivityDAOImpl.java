@@ -22,9 +22,7 @@ import java.util.Map;
 
 /**
  * ProductivityDAO Implementation
- * Executes targeted, indexed aggregation queries in MySQL to calculate
- * monthly productivity overview cards, daily completion chart distribution,
- * most productive day analytics, and month-over-month comparisons.
+ * Executes targeted, indexed aggregation queries in MySQL scoped strictly to the authenticated user.
  */
 public class ProductivityDAOImpl implements ProductivityDAO {
 
@@ -32,7 +30,7 @@ public class ProductivityDAOImpl implements ProductivityDAO {
     private static final DateTimeFormatter DISPLAY_FMT = DateTimeFormatter.ofPattern("MMM d, yyyy");
 
     @Override
-    public MonthlyProductivity getMonthlyProductivity(int year, int month) throws SQLException {
+    public MonthlyProductivity getMonthlyProductivity(int year, int month, int userId) throws SQLException {
         YearMonth ym = YearMonth.of(year, month);
         int daysInMonth = ym.lengthOfMonth();
         LocalDate startOfMonth = ym.atDay(1);
@@ -60,10 +58,11 @@ public class ProductivityDAOImpl implements ProductivityDAO {
         try (Connection conn = DBConnection.getConnection()) {
 
             // 1. Tasks Completed in selected month
-            String completedSql = "SELECT COUNT(*) FROM tasks WHERE completed_at >= ? AND completed_at < ?";
+            String completedSql = "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed_at >= ? AND completed_at < ?";
             try (PreparedStatement ps = conn.prepareStatement(completedSql)) {
-                ps.setTimestamp(1, tsStartOfMonth);
-                ps.setTimestamp(2, tsStartOfNextMonth);
+                ps.setInt(1, userId);
+                ps.setTimestamp(2, tsStartOfMonth);
+                ps.setTimestamp(3, tsStartOfNextMonth);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
                         tasksCompleted = rs.getInt(1);
@@ -72,10 +71,11 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             }
 
             // 2. Tasks Created in selected month
-            String createdSql = "SELECT COUNT(*) FROM tasks WHERE created_at >= ? AND created_at < ?";
+            String createdSql = "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND created_at >= ? AND created_at < ?";
             try (PreparedStatement ps = conn.prepareStatement(createdSql)) {
-                ps.setTimestamp(1, tsStartOfMonth);
-                ps.setTimestamp(2, tsStartOfNextMonth);
+                ps.setInt(1, userId);
+                ps.setTimestamp(2, tsStartOfMonth);
+                ps.setTimestamp(3, tsStartOfNextMonth);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
                         tasksCreated = rs.getInt(1);
@@ -84,10 +84,11 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             }
 
             // 3. Tasks Due in selected month
-            String dueSql = "SELECT COUNT(*) FROM tasks WHERE due_date >= ? AND due_date < ?";
+            String dueSql = "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND due_date >= ? AND due_date < ?";
             try (PreparedStatement ps = conn.prepareStatement(dueSql)) {
-                ps.setDate(1, dStartOfMonth);
-                ps.setDate(2, dStartOfNextMonth);
+                ps.setInt(1, userId);
+                ps.setDate(2, dStartOfMonth);
+                ps.setDate(3, dStartOfNextMonth);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
                         tasksDue = rs.getInt(1);
@@ -98,11 +99,12 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             // 4. Daily completion distribution for chart
             String dailySql = "SELECT DAY(completed_at) AS day_num, COUNT(*) AS count " +
                               "FROM tasks " +
-                              "WHERE completed_at >= ? AND completed_at < ? " +
+                              "WHERE user_id = ? AND completed_at >= ? AND completed_at < ? " +
                               "GROUP BY DAY(completed_at)";
             try (PreparedStatement ps = conn.prepareStatement(dailySql)) {
-                ps.setTimestamp(1, tsStartOfMonth);
-                ps.setTimestamp(2, tsStartOfNextMonth);
+                ps.setInt(1, userId);
+                ps.setTimestamp(2, tsStartOfMonth);
+                ps.setTimestamp(3, tsStartOfNextMonth);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         dayCountsMap.put(rs.getInt("day_num"), rs.getInt("count"));
@@ -112,8 +114,9 @@ public class ProductivityDAOImpl implements ProductivityDAO {
 
             // 5. Tasks Completed in previous month (for comparison)
             try (PreparedStatement ps = conn.prepareStatement(completedSql)) {
-                ps.setTimestamp(1, tsStartOfPrevMonth);
-                ps.setTimestamp(2, tsStartOfMonth);
+                ps.setInt(1, userId);
+                ps.setTimestamp(2, tsStartOfPrevMonth);
+                ps.setTimestamp(3, tsStartOfMonth);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
                         previousMonthCompleted = rs.getInt(1);
@@ -122,12 +125,10 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             }
         }
 
-        // Completion Rate: (completed / created) * 100. If 0 tasks created, 0%
         double completionRate = tasksCreated > 0
                 ? ((double) tasksCompleted / tasksCreated) * 100.0
                 : 0.0;
 
-        // Populate daily completions for every calendar day in the month
         List<DayStat> dailyCompletions = new ArrayList<>();
         int maxDailyCount = 0;
         List<Integer> peakDays = new ArrayList<>();
@@ -146,7 +147,6 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             }
         }
 
-        // Formulate Most Productive Day summary
         List<String> mostProductiveDaysList = new ArrayList<>();
         String mostProductiveSummary;
 
@@ -167,7 +167,6 @@ public class ProductivityDAOImpl implements ProductivityDAO {
             }
         }
 
-        // Month Comparison Calculation
         int completedDifference = tasksCompleted - previousMonthCompleted;
         Double percentageChange = null;
         String comparisonMessage;
@@ -182,7 +181,6 @@ public class ProductivityDAOImpl implements ProductivityDAO {
                 comparisonMessage = String.format(Locale.US, "Same as last month (%d completed)", tasksCompleted);
             }
         } else {
-            // Previous month had 0 completed tasks
             if (tasksCompleted > 0) {
                 comparisonMessage = "+" + tasksCompleted + " vs last month (0 in " + prevMonthShort + ")";
             } else {

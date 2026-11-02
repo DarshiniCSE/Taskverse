@@ -6,67 +6,71 @@ import java.util.List;
 
 /**
  * NoteDAO Interface
- * Contract defining database operations for Sticky Notes.
- * 
- * Demonstrates OOP Concept: Abstraction
+ * Contract defining database operations for Sticky Notes with per-user scoping.
  */
 public interface NoteDAO {
 
     /**
-     * Inserts a new sticky note into MySQL.
-     * @param note Note object containing title, content, color, pinned status
-     * @return the Note object with generated noteId and timestamps
+     * Inserts a new sticky note for the authenticated user.
+     * @param note Note object
+     * @param userId authenticated user ID
+     * @return the Note object with generated noteId, userId, and timestamps
      * @throws SQLException on database error
      */
-    Note createNote(Note note) throws SQLException;
+    Note createNote(Note note, int userId) throws SQLException;
 
     /**
-     * Retrieves all sticky notes ordered by pinned notes first (is_pinned DESC),
-     * then by most recently updated (updated_at DESC).
+     * Retrieves all sticky notes belonging to the authenticated user.
+     * @param userId authenticated user ID
      * @return List of Note objects
      * @throws SQLException on database error
      */
-    List<Note> getAllNotes() throws SQLException;
+    List<Note> getAllNotes(int userId) throws SQLException;
 
     /**
-     * Retrieves a single sticky note by its ID.
+     * Retrieves a single sticky note by its ID, scoped to the authenticated user.
      * @param noteId ID of note to find
+     * @param userId authenticated user ID
      * @return Note object or null if not found
      * @throws SQLException on database error
      */
-    Note getNoteById(int noteId) throws SQLException;
+    Note getNoteById(int noteId, int userId) throws SQLException;
 
     /**
-     * Updates an existing note's title, content, color, and pinned status.
+     * Updates an existing note owned by the authenticated user.
      * @param note Note object with updated fields
-     * @return true if updated, false if note was not found
+     * @param userId authenticated user ID
+     * @return true if updated, false if note was not found or not owned
      * @throws SQLException on database error
      */
-    boolean updateNote(Note note) throws SQLException;
+    boolean updateNote(Note note, int userId) throws SQLException;
 
     /**
-     * Toggles or updates the pinned status of a note.
+     * Toggles or updates the pinned status of a note owned by the authenticated user.
      * @param noteId ID of the note
      * @param isPinned true to pin, false to unpin
+     * @param userId authenticated user ID
      * @return true if updated, false otherwise
      * @throws SQLException on database error
      */
-    boolean updateNotePin(int noteId, boolean isPinned) throws SQLException;
+    boolean updateNotePin(int noteId, boolean isPinned, int userId) throws SQLException;
 
     /**
-     * Updates the color of a note.
+     * Updates the color of a note owned by the authenticated user.
      * @param noteId ID of the note
-     * @param color one of yellow, pink, blue, green, purple
+     * @param color color string
+     * @param userId authenticated user ID
      * @return true if updated, false otherwise
      * @throws SQLException on database error
      */
-    boolean updateNoteColor(int noteId, String color) throws SQLException;
+    boolean updateNoteColor(int noteId, String color, int userId) throws SQLException;
 
     /**
-     * Permanently deletes a sticky note from the database.
+     * Permanently deletes a sticky note owned by the authenticated user.
      * @param noteId ID of the note to delete
-     * @return true if deleted, false if note was not found
+     * @param userId authenticated user ID
+     * @return true if deleted, false if note was not found or not owned
      * @throws SQLException on database error
      */
-    boolean deleteNote(int noteId) throws SQLException;
+    boolean deleteNote(int noteId, int userId) throws SQLException;
 }

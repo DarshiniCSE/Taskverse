@@ -10,10 +10,21 @@ const API = {
     DASHBOARD: `${CONTEXT_PATH}/api/dashboard`,
     HEALTH: `${CONTEXT_PATH}/api/health`,
     NOTES: `${CONTEXT_PATH}/api/notes`,
-    PRODUCTIVITY: `${CONTEXT_PATH}/api/productivity`
+    PRODUCTIVITY: `${CONTEXT_PATH}/api/productivity`,
+    AUTH: `${CONTEXT_PATH}/api/auth`
 };
 
 // Application State
+
+// Authentication & CSRF Request Headers
+function getAuthHeaders() {
+    const h = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
+    if (state && state.csrfToken) {
+        h['X-CSRF-Token'] = state.csrfToken;
+    }
+    return h;
+}
+
 let state = {
     tasks: [],
     notes: [],
@@ -35,7 +46,9 @@ let state = {
     productivityMonth: new Date().getMonth() + 1, // 1-indexed for backend API (1 = Jan, 10 = Oct)
     productivityData: null,
     totalPoints: 0,
-    celebratedMilestones: new Set()
+    celebratedMilestones: new Set(),
+    currentUser: null,
+    csrfToken: null
 };
 
 // DOM Elements
@@ -229,12 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initSidebarPreference();
     initNavigation();
     initCelebrationSystem();
-    checkHealth();
-    loadDashboard();
-
-    // Set initial route based on URL hash (#dashboard, #tasks, #calendar)
-    const initialView = getRouteFromHash();
-    navigateTo(initialView, false);
+    initAuthEventListeners();
+    checkAuthAndInit();
 
     // Safety fallback: Dismiss loader after 3.2 seconds max so the user is never stuck
     setTimeout(() => {
@@ -1584,7 +1593,7 @@ async function handleTaskDrop(taskId, targetStatus, originalStatus) {
     try {
         const response = await fetch(API.TASKS, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -1699,7 +1708,7 @@ async function handleFormSubmit(e) {
     try {
         const response = await fetch(API.TASKS, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -1742,7 +1751,7 @@ window.updateTaskStatusDirectly = async function(taskId, newStatus) {
     try {
         const response = await fetch(API.TASKS, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -1802,7 +1811,7 @@ async function executeDeleteTask() {
     try {
         const response = await fetch(API.TASKS, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -2755,7 +2764,7 @@ function queueNoteAutoSave(noteId, title, content) {
 
             const res = await fetch(API.NOTES, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                headers: getAuthHeaders(),
                 body: params.toString()
             });
 
@@ -2807,7 +2816,7 @@ async function toggleNotePin(noteId, newIsPinned) {
 
         const res = await fetch(API.NOTES, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -2836,7 +2845,7 @@ async function changeNoteColor(noteId, newColor) {
 
         const res = await fetch(API.NOTES, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -2881,7 +2890,7 @@ async function createNewNote() {
 
         const res = await fetch(API.NOTES, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -2950,7 +2959,7 @@ async function executeDeleteNote() {
 
         const res = await fetch(API.NOTES, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            headers: getAuthHeaders(),
             body: params.toString()
         });
 
@@ -3195,4 +3204,257 @@ function renderProductivityChart(prod) {
 
         elements.prodChartBars.appendChild(col);
     });
+}
+
+
+
+// ==========================================
+// Authentication & Session Management System
+// ==========================================
+function initAuthEventListeners() {
+    const userPill = document.getElementById('userPill');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const authModalOverlay = document.getElementById('authModalOverlay');
+    const tabSignInBtn = document.getElementById('tabSignInBtn');
+    const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+    const signInForm = document.getElementById('signInForm');
+    const registerForm = document.getElementById('registerForm');
+
+    if (userPill) {
+        userPill.addEventListener('click', (e) => {
+            if (e.target.closest('#logoutBtn')) return;
+            if (!state.currentUser) {
+                showAuthModal('login');
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await performLogout();
+        });
+    }
+
+    if (tabSignInBtn && tabRegisterBtn) {
+        tabSignInBtn.addEventListener('click', () => switchAuthTab('login'));
+        tabRegisterBtn.addEventListener('click', () => switchAuthTab('register'));
+    }
+
+    if (signInForm) {
+        signInForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await performLogin();
+        });
+    }
+
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await performRegister();
+        });
+    }
+}
+
+function switchAuthTab(tab) {
+    const tabSignInBtn = document.getElementById('tabSignInBtn');
+    const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+    const signInForm = document.getElementById('signInForm');
+    const registerForm = document.getElementById('registerForm');
+    const authModalTitle = document.getElementById('authModalTitle');
+    const authErrorAlert = document.getElementById('authErrorAlert');
+
+    if (authErrorAlert) authErrorAlert.style.display = 'none';
+
+    if (tab === 'login') {
+        tabSignInBtn.className = 'btn btn-primary';
+        tabRegisterBtn.className = 'btn btn-secondary';
+        signInForm.style.display = 'block';
+        registerForm.style.display = 'none';
+        if (authModalTitle) authModalTitle.textContent = 'Sign In to TaskVerse';
+    } else {
+        tabSignInBtn.className = 'btn btn-secondary';
+        tabRegisterBtn.className = 'btn btn-primary';
+        signInForm.style.display = 'none';
+        registerForm.style.display = 'block';
+        if (authModalTitle) authModalTitle.textContent = 'Create TaskVerse Account';
+    }
+}
+
+function showAuthModal(tab = 'login') {
+    const authModalOverlay = document.getElementById('authModalOverlay');
+    if (authModalOverlay) {
+        switchAuthTab(tab);
+        authModalOverlay.style.display = 'flex';
+    }
+}
+
+function hideAuthModal() {
+    const authModalOverlay = document.getElementById('authModalOverlay');
+    if (authModalOverlay) {
+        authModalOverlay.style.display = 'none';
+    }
+}
+
+function showAuthError(msg) {
+    const alertBox = document.getElementById('authErrorAlert');
+    const alertText = document.getElementById('authErrorText');
+    if (alertBox && alertText) {
+        alertText.textContent = msg;
+        alertBox.style.display = 'block';
+    }
+}
+
+function updateUserPillUI(user) {
+    const nameDisplay = document.getElementById('userNameDisplay');
+    const roleDisplay = document.getElementById('userRoleDisplay');
+    const avatar = document.getElementById('userAvatar');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    if (user) {
+        if (nameDisplay) nameDisplay.textContent = user.username;
+        if (roleDisplay) roleDisplay.textContent = user.role === 'OWNER' ? 'Workspace Owner' : 'Team Member';
+        if (avatar) avatar.textContent = user.username.substring(0, 2).toUpperCase();
+        if (logoutBtn) logoutBtn.style.display = 'block';
+    } else {
+        if (nameDisplay) nameDisplay.textContent = 'Guest User';
+        if (roleDisplay) roleDisplay.textContent = 'Click to Sign In';
+        if (avatar) avatar.textContent = 'TV';
+        if (logoutBtn) logoutBtn.style.display = 'none';
+    }
+}
+
+async function checkAuthAndInit() {
+    try {
+        const res = await fetch(API.AUTH + '/me');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+            state.currentUser = data.user;
+            state.csrfToken = data.csrfToken;
+            updateUserPillUI(data.user);
+            hideAuthModal();
+            checkHealth();
+            loadDashboard();
+            const initialView = getRouteFromHash();
+            navigateTo(initialView, false);
+        } else {
+            state.currentUser = null;
+            state.csrfToken = data.csrfToken || null;
+            updateUserPillUI(null);
+            showAuthModal('login');
+            checkHealth();
+        }
+    } catch (e) {
+        state.currentUser = null;
+        updateUserPillUI(null);
+        showAuthModal('login');
+        checkHealth();
+    }
+}
+
+async function performLogin() {
+    const identifier = document.getElementById('authLoginIdentifier').value.trim();
+    const password = document.getElementById('authLoginPassword').value;
+    const submitBtn = document.getElementById('submitLoginBtn');
+    const submitText = document.getElementById('submitLoginText');
+
+    if (!identifier || !password) {
+        showAuthError('Please enter both identifier and password.');
+        return;
+    }
+
+    try {
+        submitBtn.disabled = true;
+        submitText.textContent = 'Signing in...';
+
+        const params = new URLSearchParams();
+        params.append('identifier', identifier);
+        params.append('password', password);
+
+        const res = await fetch(API.AUTH + '/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: params.toString()
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            state.currentUser = data.user;
+            state.csrfToken = data.csrfToken;
+            updateUserPillUI(data.user);
+            hideAuthModal();
+            loadDashboard();
+            showCelebrationToast('Welcome back, ' + data.user.username + '!');
+        } else {
+            showAuthError(data.message || 'Invalid credentials.');
+        }
+    } catch (e) {
+        showAuthError('Unable to connect to authentication service.');
+    } finally {
+        submitBtn.disabled = false;
+        submitText.textContent = 'Sign In';
+    }
+}
+
+async function performRegister() {
+    const username = document.getElementById('authRegisterUsername').value.trim();
+    const email = document.getElementById('authRegisterEmail').value.trim();
+    const password = document.getElementById('authRegisterPassword').value;
+    const submitBtn = document.getElementById('submitRegisterBtn');
+    const submitText = document.getElementById('submitRegisterText');
+
+    if (!username || !email || !password) {
+        showAuthError('All fields are required.');
+        return;
+    }
+
+    try {
+        submitBtn.disabled = true;
+        submitText.textContent = 'Creating account...';
+
+        const params = new URLSearchParams();
+        params.append('username', username);
+        params.append('email', email);
+        params.append('password', password);
+
+        const res = await fetch(API.AUTH + '/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: params.toString()
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            state.currentUser = data.user;
+            state.csrfToken = data.csrfToken;
+            updateUserPillUI(data.user);
+            hideAuthModal();
+            loadDashboard();
+            showCelebrationToast('Account created! Welcome, ' + data.user.username + '!');
+        } else {
+            showAuthError(data.message || 'Registration failed.');
+        }
+    } catch (e) {
+        showAuthError('Unable to connect to registration service.');
+    } finally {
+        submitBtn.disabled = false;
+        submitText.textContent = 'Create Account';
+    }
+}
+
+async function performLogout() {
+    try {
+        await fetch(API.AUTH + '/logout', {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+    } catch (ignored) {}
+
+    state.currentUser = null;
+    state.csrfToken = null;
+    state.tasks = [];
+    state.notes = [];
+    state.totalPoints = 0;
+    updateUserPillUI(null);
+    showAuthModal('login');
 }

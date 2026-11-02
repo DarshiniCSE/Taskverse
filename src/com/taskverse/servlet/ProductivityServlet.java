@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -15,11 +16,7 @@ import java.time.LocalDate;
 
 /**
  * ProductivityServlet
- * Controller providing real-time Monthly Productivity Tracker analytics directly from MySQL.
- * 
- * Endpoints:
- * - GET /api/productivity (defaults to current month and year)
- * - GET /api/productivity?year=2026&month=10
+ * Controller providing real-time Monthly Productivity Tracker analytics scoped strictly to the authenticated user.
  */
 public class ProductivityServlet extends HttpServlet {
 
@@ -30,11 +27,17 @@ public class ProductivityServlet extends HttpServlet {
         this.productivityDAO = new ProductivityDAOImpl();
     }
 
+    public void setProductivityDAO(ProductivityDAO productivityDAO) {
+        this.productivityDAO = productivityDAO;
+    }
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         setupResponseHeaders(response);
         PrintWriter out = response.getWriter();
+
+        int userId = getAuthenticatedUserId(request);
 
         LocalDate now = LocalDate.now();
         int year = now.getYear();
@@ -66,41 +69,36 @@ public class ProductivityServlet extends HttpServlet {
         // Validate range
         if (year < 1970 || year > 2100 || month < 1 || month > 12) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            out.print("{\"success\":false,\"message\":\"Invalid calendar range. Year must be between 1970 and 2100, month between 1 and 12.\"}");
+            out.print("{\"success\":false,\"message\":\"Invalid calendar range.\"}");
             return;
         }
 
         try {
-            MonthlyProductivity productivity = productivityDAO.getMonthlyProductivity(year, month);
+            MonthlyProductivity productivity = productivityDAO.getMonthlyProductivity(year, month, userId);
             out.print("{\"success\":true,\"productivity\":" + productivity.toJSON() + "}");
         } catch (SQLException e) {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            out.print("{\"success\":false,\"message\":\"Database error: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Database service temporarily unavailable.\"}");
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            out.print("{\"success\":false,\"message\":\"Server error: " + escapeJson(e.getMessage()) + "\"}");
+            out.print("{\"success\":false,\"message\":\"Analytics request could not be processed.\"}");
         }
+    }
+
+    private int getAuthenticatedUserId(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null && session.getAttribute("USER_ID") != null) {
+            return (Integer) session.getAttribute("USER_ID");
+        }
+        throw new IllegalStateException("Unauthenticated request reached ProductivityServlet.");
     }
 
     private void setupResponseHeaders(HttpServletResponse response) {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        response.setHeader("Access-Control-Allow-Origin", "*");
-        response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         response.setHeader("Pragma", "no-cache");
         response.setDateHeader("Expires", 0);
-    }
-
-    private String escapeJson(String input) {
-        if (input == null) return "";
-        return input.replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\b", "\\b")
-                    .replace("\f", "\\f")
-                    .replace("\n", "\\n")
-                    .replace("\r", "\\r")
-                    .replace("\t", "\\t");
     }
 }

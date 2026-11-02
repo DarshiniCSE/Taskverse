@@ -11,7 +11,8 @@ import java.io.PrintWriter;
 
 /**
  * HealthServlet
- * Diagnostic endpoint to verify system status, JDBC driver, and database connectivity.
+ * Diagnostic endpoint to verify system status and database connectivity.
+ * Publicly accessible, does not expose credentials, database names, or driver details.
  */
 public class HealthServlet extends HttpServlet {
 
@@ -20,7 +21,7 @@ public class HealthServlet extends HttpServlet {
             throws ServletException, IOException {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("X-Content-Type-Options", "nosniff");
 
         PrintWriter out = response.getWriter();
         String dbStatus = DBConnection.testConnection();

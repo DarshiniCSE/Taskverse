@@ -10,6 +10,7 @@ package com.taskverse.model;
  */
 public class Task {
     private int taskId;
+    private int userId;
     private String title;
     private String description;
     private String priority; // Low, Medium, High
@@ -65,6 +66,14 @@ public class Task {
 
     public void setTaskId(int taskId) {
         this.taskId = taskId;
+    }
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public void setUserId(int userId) {
+        this.userId = userId;
     }
 
     public String getTitle() {
@@ -146,6 +155,7 @@ public class Task {
     public String toJSON() {
         return "{"
             + "\"taskId\":" + taskId + ","
+            + "\"userId\":" + userId + ","
             + "\"title\":\"" + escapeJson(title) + "\","
             + "\"description\":\"" + escapeJson(description) + "\","
             + "\"priority\":\"" + escapeJson(priority) + "\","
