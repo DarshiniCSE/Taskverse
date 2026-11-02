@@ -3,10 +3,33 @@
 -- Target: MySQL 8.0+
 -- Description: Adds user tenancy, authentication tables, per-user ownership,
 --              and composite foreign key constraints.
--- Safe: Designed to preserve all legacy records without data loss.
+-- Safe: Validates legacy data integrity before applying changes.
 -- =====================================================================
 
 USE taskverse_db;
+
+-- Step 0: Precondition Safety Check
+-- Detect inconsistent legacy records (e.g. orphaned task_points)
+DROP PROCEDURE IF EXISTS check_migration_preconditions;
+DELIMITER //
+CREATE PROCEDURE check_migration_preconditions()
+BEGIN
+    DECLARE v_orphan_points INT DEFAULT 0;
+
+    SELECT COUNT(*) INTO v_orphan_points
+    FROM task_points tp
+    LEFT JOIN tasks t ON tp.task_id = t.task_id
+    WHERE t.task_id IS NULL;
+
+    IF v_orphan_points > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Migration aborted: Inconsistent legacy records detected. Orphaned task_points found with non-existent task_id.';
+    END IF;
+END //
+DELIMITER ;
+
+CALL check_migration_preconditions();
+DROP PROCEDURE check_migration_preconditions;
 
 -- Step 1: Create Users Table
 CREATE TABLE IF NOT EXISTS users (
@@ -23,6 +46,18 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_users_username (username),
     INDEX idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Enforce exactly one OWNER account at the database level using a functional index
+SET @add_single_owner_idx = (
+    SELECT IF(COUNT(*) = 0, 'CREATE UNIQUE INDEX uq_single_owner ON users ((CASE WHEN role = "OWNER" THEN 1 ELSE NULL END))', 'SELECT 1')
+    FROM information_schema.STATISTICS 
+    WHERE TABLE_SCHEMA = 'taskverse_db' 
+      AND TABLE_NAME = 'users' 
+      AND INDEX_NAME = 'uq_single_owner'
+);
+PREPARE stmt_add_single_owner FROM @add_single_owner_idx;
+EXECUTE stmt_add_single_owner;
+DEALLOCATE PREPARE stmt_add_single_owner;
 
 -- Step 2: Update Categories Table for Multi-Tenancy
 -- Existing table has global UNIQUE constraint on 'name'.
@@ -108,6 +143,18 @@ UPDATE tasks t
 JOIN categories c ON t.category = c.name
 SET t.category_id = c.category_id
 WHERE t.category_id IS NULL;
+
+-- Add composite unique key on tasks(task_id, user_id) to support composite FK from task_points
+SET @add_tasks_uq = (
+    SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD CONSTRAINT uq_tasks_task_user UNIQUE KEY (task_id, user_id)', 'SELECT 1')
+    FROM information_schema.TABLE_CONSTRAINTS 
+    WHERE TABLE_SCHEMA = 'taskverse_db' 
+      AND TABLE_NAME = 'tasks' 
+      AND CONSTRAINT_NAME = 'uq_tasks_task_user'
+);
+PREPARE stmt_add_tasks_uq FROM @add_tasks_uq;
+EXECUTE stmt_add_tasks_uq;
+DEALLOCATE PREPARE stmt_add_tasks_uq;
 
 -- Add index on tasks(user_id)
 SET @add_task_user_idx = (
@@ -221,28 +268,17 @@ PREPARE stmt_add_notes_fk FROM @add_notes_fk;
 EXECUTE stmt_add_notes_fk;
 DEALLOCATE PREPARE stmt_add_notes_fk;
 
--- Task Points FK
-SET @add_points_fk_user = (
-    SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD CONSTRAINT fk_task_points_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE', 'SELECT 1')
+-- Task Points Composite FK: Enforces that task points belong to the same task AND the same user!
+SET @add_points_fk_composite = (
+    SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD CONSTRAINT fk_task_points_task_user FOREIGN KEY (task_id, user_id) REFERENCES tasks(task_id, user_id) ON DELETE CASCADE', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
     WHERE TABLE_SCHEMA = 'taskverse_db' 
       AND TABLE_NAME = 'task_points' 
-      AND CONSTRAINT_NAME = 'fk_task_points_user'
+      AND CONSTRAINT_NAME = 'fk_task_points_task_user'
 );
-PREPARE stmt_add_points_fk_user FROM @add_points_fk_user;
-EXECUTE stmt_add_points_fk_user;
-DEALLOCATE PREPARE stmt_add_points_fk_user;
-
-SET @add_points_fk_task = (
-    SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD CONSTRAINT fk_task_points_task FOREIGN KEY (task_id) REFERENCES tasks(task_id) ON DELETE CASCADE', 'SELECT 1')
-    FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
-      AND TABLE_NAME = 'task_points' 
-      AND CONSTRAINT_NAME = 'fk_task_points_task'
-);
-PREPARE stmt_add_points_fk_task FROM @add_points_fk_task;
-EXECUTE stmt_add_points_fk_task;
-DEALLOCATE PREPARE stmt_add_points_fk_task;
+PREPARE stmt_add_points_fk_composite FROM @add_points_fk_composite;
+EXECUTE stmt_add_points_fk_composite;
+DEALLOCATE PREPARE stmt_add_points_fk_composite;
 
 -- Verification query
 SELECT 'Security migration applied successfully.' AS status;

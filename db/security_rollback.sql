@@ -2,12 +2,33 @@
 -- TaskVerse — Security Baseline Database Rollback Script
 -- Target: MySQL 8.0+
 -- Description: Safely reverts multi-tenancy columns, foreign keys, and indexes.
+-- Safety: Halts if multiple users exist to prevent blending private data.
 -- =====================================================================
 
 USE taskverse_db;
 
+-- Step 0: Rollback Safety Precondition Check
+DROP PROCEDURE IF EXISTS check_rollback_safety;
+DELIMITER //
+CREATE PROCEDURE check_rollback_safety()
+BEGIN
+    DECLARE v_user_count INT DEFAULT 0;
+
+    IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'users') > 0 THEN
+        SELECT COUNT(*) INTO v_user_count FROM users;
+        IF v_user_count > 1 THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Rollback aborted: Multiple users exist in the database. Reverting multi-tenancy would merge distinct users private data into a single shared space. Backup and export data first.';
+        END IF;
+    END IF;
+END //
+DELIMITER ;
+
+CALL check_rollback_safety();
+DROP PROCEDURE check_rollback_safety;
+
 -- 1. Drop foreign keys
-SET @drop_fk1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP FOREIGN KEY fk_task_points_task', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_task_points_task');
+SET @drop_fk1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP FOREIGN KEY fk_task_points_task_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_task_points_task_user');
 PREPARE stmt1 FROM @drop_fk1; EXECUTE stmt1; DEALLOCATE PREPARE stmt1;
 
 SET @drop_fk2 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP FOREIGN KEY fk_task_points_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'fk_task_points_user');
@@ -26,12 +47,18 @@ SET @drop_fk6 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP FOREIGN KE
 PREPARE stmt6 FROM @drop_fk6; EXECUTE stmt6; DEALLOCATE PREPARE stmt6;
 
 -- 2. Drop constraints & indexes
+SET @drop_idx_composite = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE tasks DROP INDEX uq_tasks_task_user', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'uq_tasks_task_user');
+PREPARE stmt_comp FROM @drop_idx_composite; EXECUTE stmt_comp; DEALLOCATE PREPARE stmt_comp;
+
 SET @drop_idx1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP INDEX uq_categories_user_name', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'uq_categories_user_name');
 PREPARE stmt7 FROM @drop_idx1; EXECUTE stmt7; DEALLOCATE PREPARE stmt7;
 
 -- Restore unique on categories.name
 SET @restore_cat_idx = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD CONSTRAINT uq_categories_name UNIQUE (name)', 'SELECT 1') FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'taskverse_db' AND CONSTRAINT_NAME = 'uq_categories_name');
 PREPARE stmt8 FROM @restore_cat_idx; EXECUTE stmt8; DEALLOCATE PREPARE stmt8;
+
+SET @drop_owner_idx = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE users DROP INDEX uq_single_owner', 'SELECT 1') FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'users' AND INDEX_NAME = 'uq_single_owner');
+PREPARE stmt_owner FROM @drop_owner_idx; EXECUTE stmt_owner; DEALLOCATE PREPARE stmt_owner;
 
 -- 3. Drop columns
 SET @drop_col1 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE task_points DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'task_points' AND COLUMN_NAME = 'user_id');
@@ -51,8 +78,5 @@ PREPARE stmt13 FROM @drop_col5; EXECUTE stmt13; DEALLOCATE PREPARE stmt13;
 
 SET @drop_col6 = (SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP COLUMN user_id', 'SELECT 1') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'taskverse_db' AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'user_id');
 PREPARE stmt14 FROM @drop_col6; EXECUTE stmt14; DEALLOCATE PREPARE stmt14;
-
--- Users table is preserved or can be dropped if desired:
--- DROP TABLE IF EXISTS users;
 
 SELECT 'Security rollback completed successfully.' AS status;

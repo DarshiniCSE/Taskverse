@@ -219,24 +219,17 @@ public class AuthServlet extends HttpServlet {
 
             PasswordHasher.HashResult hashResult = PasswordHasher.hashPassword(password.toCharArray());
 
-            // If this is the first user ever, assign OWNER role; otherwise MEMBER
-            int ownerCount = userDAO.getOwnerCount();
-            String role = (ownerCount == 0) ? "OWNER" : "MEMBER";
-
+            // Public registration strictly creates standard MEMBER accounts.
+            // Administrative OWNER accounts can ONLY be established via the local SetupAdmin CLI.
             User newUser = new User();
             newUser.setUsername(username.trim());
             newUser.setEmail(email.trim().toLowerCase());
             newUser.setPasswordHash(hashResult.getHashBase64());
             newUser.setPasswordSalt(hashResult.getSaltBase64());
-            newUser.setRole(role);
+            newUser.setRole("MEMBER");
             newUser.setActive(true);
 
             User created = userDAO.createUser(newUser);
-
-            // If newly created user is OWNER, adopt unowned legacy records
-            if ("OWNER".equals(role)) {
-                userDAO.adoptLegacyRecords(created.getUserId());
-            }
 
             // Automatically sign in upon registration
             request.changeSessionId();

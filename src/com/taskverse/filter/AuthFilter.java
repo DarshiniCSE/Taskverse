@@ -63,6 +63,11 @@ public class AuthFilter implements Filter {
     private boolean isProtectedApi(String path) {
         if (path == null) return false;
         
+        // Only inspect API routes
+        if (!path.startsWith("/api/")) {
+            return false;
+        }
+
         // Health check is always public
         if (path.startsWith("/api/health")) {
             return false;
@@ -73,10 +78,7 @@ public class AuthFilter implements Filter {
             return false;
         }
 
-        // Protected API endpoints
-        return path.startsWith("/api/tasks") ||
-               path.startsWith("/api/notes") ||
-               path.startsWith("/api/productivity") ||
-               path.startsWith("/api/dashboard");
+        // Default Deny: All other /api/* endpoints require authentication
+        return true;
     }
 }

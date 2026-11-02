@@ -145,10 +145,14 @@ public class UserDAOImpl implements UserDAO {
                 totalAdopted += ps.executeUpdate();
             }
 
-            // 4. Adopt unowned task_points
-            String pointsSql = "UPDATE task_points SET user_id = ? WHERE user_id IS NULL";
+            // 4. Adopt unowned task_points whose parent task is owned by the owner
+            String pointsSql = "UPDATE task_points tp " +
+                               "JOIN tasks t ON tp.task_id = t.task_id " +
+                               "SET tp.user_id = ? " +
+                               "WHERE tp.user_id IS NULL AND t.user_id = ?";
             try (PreparedStatement ps = conn.prepareStatement(pointsSql)) {
                 ps.setInt(1, ownerUserId);
+                ps.setInt(2, ownerUserId);
                 totalAdopted += ps.executeUpdate();
             }
 
