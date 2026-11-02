@@ -6,7 +6,9 @@
 -- Safe: Validates legacy data integrity before applying changes.
 -- =====================================================================
 
-USE taskverse_db;
+-- Set target database: uses active connection schema (DATABASE()), or fallback if running standalone in GUI.
+-- If running standalone in MySQL Workbench without an active schema selected, uncomment:
+-- USE taskverse_db;
 
 -- Step 0: Precondition Safety Check
 -- Detect inconsistent legacy records (e.g. orphaned task_points)
@@ -16,14 +18,16 @@ CREATE PROCEDURE check_migration_preconditions()
 BEGIN
     DECLARE v_orphan_points INT DEFAULT 0;
 
-    SELECT COUNT(*) INTO v_orphan_points
-    FROM task_points tp
-    LEFT JOIN tasks t ON tp.task_id = t.task_id
-    WHERE t.task_id IS NULL;
+    IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_points') > 0 THEN
+        SELECT COUNT(*) INTO v_orphan_points
+        FROM task_points tp
+        LEFT JOIN tasks t ON tp.task_id = t.task_id
+        WHERE t.task_id IS NULL;
 
-    IF v_orphan_points > 0 THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Migration aborted: Inconsistent legacy records detected. Orphaned task_points found with non-existent task_id.';
+        IF v_orphan_points > 0 THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Migration aborted: Inconsistent legacy records detected. Orphaned task_points found with non-existent task_id.';
+        END IF;
     END IF;
 END //
 DELIMITER ;
@@ -51,7 +55,7 @@ CREATE TABLE IF NOT EXISTS users (
 SET @add_single_owner_idx = (
     SELECT IF(COUNT(*) = 0, 'CREATE UNIQUE INDEX uq_single_owner ON users ((CASE WHEN role = "OWNER" THEN 1 ELSE NULL END))', 'SELECT 1')
     FROM information_schema.STATISTICS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'users' 
       AND INDEX_NAME = 'uq_single_owner'
 );
@@ -66,7 +70,7 @@ DEALLOCATE PREPARE stmt_add_single_owner;
 SET @drop_cat_name_idx = (
     SELECT IF(COUNT(*) > 0, 'ALTER TABLE categories DROP INDEX name', 'SELECT 1')
     FROM information_schema.STATISTICS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'categories' 
       AND INDEX_NAME = 'name'
 );
@@ -78,7 +82,7 @@ DEALLOCATE PREPARE stmt_drop_cat_idx;
 SET @add_cat_user = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD COLUMN user_id INT NULL AFTER category_id', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'categories' 
       AND COLUMN_NAME = 'user_id'
 );
@@ -90,7 +94,7 @@ DEALLOCATE PREPARE stmt_add_cat_user;
 SET @add_cat_system = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT FALSE AFTER color', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'categories' 
       AND COLUMN_NAME = 'is_system'
 );
@@ -107,7 +111,7 @@ WHERE name IN ('College', 'Personal', 'Work', 'Projects', 'Other') AND user_id I
 SET @add_cat_uq = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD CONSTRAINT uq_categories_user_name UNIQUE KEY ((COALESCE(user_id, 0)), name)', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'categories' 
       AND CONSTRAINT_NAME = 'uq_categories_user_name'
 );
@@ -119,7 +123,7 @@ DEALLOCATE PREPARE stmt_add_cat_uq;
 SET @add_task_user = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD COLUMN user_id INT NULL AFTER task_id', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND COLUMN_NAME = 'user_id'
 );
@@ -130,7 +134,7 @@ DEALLOCATE PREPARE stmt_add_task_user;
 SET @add_task_cat_id = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD COLUMN category_id INT NULL AFTER category', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND COLUMN_NAME = 'category_id'
 );
@@ -148,7 +152,7 @@ WHERE t.category_id IS NULL;
 SET @add_tasks_uq = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD CONSTRAINT uq_tasks_task_user UNIQUE KEY (task_id, user_id)', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND CONSTRAINT_NAME = 'uq_tasks_task_user'
 );
@@ -160,7 +164,7 @@ DEALLOCATE PREPARE stmt_add_tasks_uq;
 SET @add_task_user_idx = (
     SELECT IF(COUNT(*) = 0, 'CREATE INDEX idx_tasks_user_id ON tasks (user_id)', 'SELECT 1')
     FROM information_schema.STATISTICS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND INDEX_NAME = 'idx_tasks_user_id'
 );
@@ -168,11 +172,24 @@ PREPARE stmt_add_task_user_idx FROM @add_task_user_idx;
 EXECUTE stmt_add_task_user_idx;
 DEALLOCATE PREPARE stmt_add_task_user_idx;
 
--- Step 4: Update Notes Table for Multi-Tenancy
+-- Step 4: Ensure Notes Table Exists and Update for Multi-Tenancy
+CREATE TABLE IF NOT EXISTS notes (
+    note_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    title VARCHAR(255) NOT NULL DEFAULT 'Untitled Note',
+    content TEXT,
+    color VARCHAR(20) NOT NULL DEFAULT 'yellow',
+    is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_notes_pinned (is_pinned),
+    INDEX idx_notes_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET @add_notes_user = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE notes ADD COLUMN user_id INT NULL AFTER note_id', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'notes' 
       AND COLUMN_NAME = 'user_id'
 );
@@ -183,7 +200,7 @@ DEALLOCATE PREPARE stmt_add_notes_user;
 SET @add_notes_user_idx = (
     SELECT IF(COUNT(*) = 0, 'CREATE INDEX idx_notes_user_id ON notes (user_id)', 'SELECT 1')
     FROM information_schema.STATISTICS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'notes' 
       AND INDEX_NAME = 'idx_notes_user_id'
 );
@@ -191,11 +208,23 @@ PREPARE stmt_add_notes_user_idx FROM @add_notes_user_idx;
 EXECUTE stmt_add_notes_user_idx;
 DEALLOCATE PREPARE stmt_add_notes_user_idx;
 
--- Step 5: Update Task Points Table for Multi-Tenancy
+-- Step 5: Ensure Task Points Table Exists and Update for Multi-Tenancy
+CREATE TABLE IF NOT EXISTS task_points (
+    point_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    task_id INT NOT NULL,
+    task_title VARCHAR(255) NOT NULL,
+    priority ENUM('Low', 'Medium', 'High') NOT NULL,
+    points INT NOT NULL,
+    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_task_points_task_id (task_id),
+    INDEX idx_task_points_earned_at (earned_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET @add_points_user = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD COLUMN user_id INT NULL AFTER point_id', 'SELECT 1')
     FROM information_schema.COLUMNS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'task_points' 
       AND COLUMN_NAME = 'user_id'
 );
@@ -212,7 +241,7 @@ WHERE tp.user_id IS NULL AND t.user_id IS NOT NULL;
 SET @add_points_user_idx = (
     SELECT IF(COUNT(*) = 0, 'CREATE INDEX idx_task_points_user_id ON task_points (user_id)', 'SELECT 1')
     FROM information_schema.STATISTICS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'task_points' 
       AND INDEX_NAME = 'idx_task_points_user_id'
 );
@@ -225,7 +254,7 @@ DEALLOCATE PREPARE stmt_add_points_user_idx;
 SET @add_cat_fk = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE categories ADD CONSTRAINT fk_categories_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'categories' 
       AND CONSTRAINT_NAME = 'fk_categories_user'
 );
@@ -237,7 +266,7 @@ DEALLOCATE PREPARE stmt_add_cat_fk;
 SET @add_task_fk_user = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD CONSTRAINT fk_tasks_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND CONSTRAINT_NAME = 'fk_tasks_user'
 );
@@ -248,7 +277,7 @@ DEALLOCATE PREPARE stmt_add_task_fk_user;
 SET @add_task_fk_cat = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE tasks ADD CONSTRAINT fk_tasks_category FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE SET NULL', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'tasks' 
       AND CONSTRAINT_NAME = 'fk_tasks_category'
 );
@@ -260,7 +289,7 @@ DEALLOCATE PREPARE stmt_add_task_fk_cat;
 SET @add_notes_fk = (
     SELECT IF(COUNT(*) = 0, 'ALTER TABLE notes ADD CONSTRAINT fk_notes_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'notes' 
       AND CONSTRAINT_NAME = 'fk_notes_user'
 );
@@ -270,9 +299,9 @@ DEALLOCATE PREPARE stmt_add_notes_fk;
 
 -- Task Points Composite FK: Enforces that task points belong to the same task AND the same user!
 SET @add_points_fk_composite = (
-    SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD CONSTRAINT fk_task_points_task_user FOREIGN KEY (task_id, user_id) REFERENCES tasks(task_id, user_id) ON DELETE CASCADE', 'SELECT 1')
+    SELECT IF(COUNT(*) = 0, 'ALTER TABLE task_points ADD CONSTRAINT fk_task_points_task_user FOREIGN KEY (task_id, user_id) REFERENCES tasks(task_id, user_id) ON DELETE CASCADE ON UPDATE CASCADE', 'SELECT 1')
     FROM information_schema.TABLE_CONSTRAINTS 
-    WHERE TABLE_SCHEMA = 'taskverse_db' 
+    WHERE TABLE_SCHEMA = DATABASE() 
       AND TABLE_NAME = 'task_points' 
       AND CONSTRAINT_NAME = 'fk_task_points_task_user'
 );
