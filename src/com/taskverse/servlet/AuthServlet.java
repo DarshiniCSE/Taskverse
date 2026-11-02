@@ -153,8 +153,12 @@ public class AuthServlet extends HttpServlet {
             RateLimiter.recordSuccess(userKey);
 
             // Establish secure session with session fixation defense
-            request.changeSessionId();
-            HttpSession session = request.getSession(true);
+            HttpSession session = request.getSession(false);
+            if (session != null) {
+                request.changeSessionId();
+            } else {
+                session = request.getSession(true);
+            }
             session.setAttribute("USER_ID", user.getUserId());
             session.setAttribute("USERNAME", user.getUsername());
             session.setAttribute("ROLE", user.getRole());
@@ -164,6 +168,11 @@ public class AuthServlet extends HttpServlet {
             out.print("{\"success\":true,\"user\":" + user.toJSON() + ",\"csrfToken\":\"" + csrfToken + "\"}");
 
         } catch (SQLException e) {
+            System.err.println("[TaskVerse AuthServlet] Login database error: SQLState=" + e.getSQLState() + " - " + e.getMessage());
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            out.print("{\"success\":false,\"message\":\"Authentication service is temporarily unavailable.\"}");
+        } catch (Exception e) {
+            System.err.println("[TaskVerse AuthServlet] Unexpected login error: " + e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             out.print("{\"success\":false,\"message\":\"Authentication service is temporarily unavailable.\"}");
         }
@@ -231,9 +240,13 @@ public class AuthServlet extends HttpServlet {
 
             User created = userDAO.createUser(newUser);
 
-            // Automatically sign in upon registration
-            request.changeSessionId();
-            HttpSession session = request.getSession(true);
+            // Automatically sign in upon registration with session fixation defense
+            HttpSession session = request.getSession(false);
+            if (session != null) {
+                request.changeSessionId();
+            } else {
+                session = request.getSession(true);
+            }
             session.setAttribute("USER_ID", created.getUserId());
             session.setAttribute("USERNAME", created.getUsername());
             session.setAttribute("ROLE", created.getRole());
@@ -244,6 +257,11 @@ public class AuthServlet extends HttpServlet {
             out.print("{\"success\":true,\"user\":" + created.toJSON() + ",\"csrfToken\":\"" + csrfToken + "\"}");
 
         } catch (SQLException e) {
+            System.err.println("[TaskVerse AuthServlet] Registration database error: SQLState=" + e.getSQLState() + " - " + e.getMessage());
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            out.print("{\"success\":false,\"message\":\"Registration service is temporarily unavailable.\"}");
+        } catch (Exception e) {
+            System.err.println("[TaskVerse AuthServlet] Unexpected registration error: " + e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             out.print("{\"success\":false,\"message\":\"Registration service is temporarily unavailable.\"}");
         }
@@ -275,6 +293,7 @@ public class AuthServlet extends HttpServlet {
                 out.print("{\"authenticated\":false}");
             }
         } catch (SQLException e) {
+            System.err.println("[TaskVerse AuthServlet] Session me error: SQLState=" + e.getSQLState() + " - " + e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             out.print("{\"authenticated\":false,\"message\":\"Database temporarily unavailable.\"}");
         }

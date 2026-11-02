@@ -31,3 +31,4 @@ Desktop.ini
 **/db.properties
 **/.env
 **/.env.*
+db/backup*.sql
