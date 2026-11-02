@@ -105,4 +105,14 @@
         <welcome-file>index.html</welcome-file>
     </welcome-file-list>
 
+    <!-- PWA & Static Asset MIME Mappings -->
+    <mime-mapping>
+        <extension>webmanifest</extension>
+        <mime-type>application/manifest+json</mime-type>
+    </mime-mapping>
+    <mime-mapping>
+        <extension>json</extension>
+        <mime-type>application/json</mime-type>
+    </mime-mapping>
+
 </web-app>

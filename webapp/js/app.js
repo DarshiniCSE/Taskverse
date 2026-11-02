@@ -243,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initCelebrationSystem();
     initAuthEventListeners();
+    initPwaAndServiceWorker();
     checkAuthAndInit();
 
     // Safety fallback: Dismiss loader after 3.2 seconds max so the user is never stuck
@@ -580,6 +581,29 @@ function initNavigation() {
         });
     });
 
+    // 7. Mobile Bottom Navigation Bar (Smartphones <= 768px)
+    const mobileBottomTabs = [
+        { el: document.getElementById('mobileNavDashboard'), view: 'dashboard' },
+        { el: document.getElementById('mobileNavTasks'), view: 'tasks' },
+        { el: document.getElementById('mobileNavCalendar'), view: 'calendar' },
+        { el: document.getElementById('mobileNavNotes'), view: 'notes' },
+        { el: document.getElementById('mobileNavProductivity'), view: 'productivity' }
+    ];
+    mobileBottomTabs.forEach(({ el, view }) => {
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateTo(view);
+        });
+    });
+
+    const mobileFab = document.getElementById('mobileQuickAddBtn');
+    if (mobileFab) {
+        mobileFab.addEventListener('click', () => {
+            openTaskModal();
+        });
+    }
+
     // Reset drawer state when window resizes back to desktop
     window.addEventListener('resize', () => {
         if (window.innerWidth > 900) {
@@ -737,6 +761,21 @@ function navigateTo(viewName, updateHash = true) {
         { el: elements.topNavProductivity, view: 'productivity' }
     ];
     topTabs.forEach(({ el, view }) => {
+        if (!el) return;
+        const isActive = (view === viewName);
+        el.classList.toggle('active', isActive);
+        el.setAttribute('aria-selected', String(isActive));
+    });
+
+    // 4b. Update active states on Mobile Bottom Navigation
+    const mobileBottomTabs = [
+        { el: document.getElementById('mobileNavDashboard'), view: 'dashboard' },
+        { el: document.getElementById('mobileNavTasks'), view: 'tasks' },
+        { el: document.getElementById('mobileNavCalendar'), view: 'calendar' },
+        { el: document.getElementById('mobileNavNotes'), view: 'notes' },
+        { el: document.getElementById('mobileNavProductivity'), view: 'productivity' }
+    ];
+    mobileBottomTabs.forEach(({ el, view }) => {
         if (!el) return;
         const isActive = (view === viewName);
         el.classList.toggle('active', isActive);
@@ -3458,3 +3497,164 @@ async function performLogout() {
     updateUserPillUI(null);
     showAuthModal('login');
 }
+
+/**
+ * ============================================================================
+ * Progressive Web App (PWA) & Cross-Platform Installation Controller
+ * ============================================================================
+ */
+let deferredInstallPrompt = null;
+
+function initPwaAndServiceWorker() {
+    // 1. Register Service Worker if supported
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js', { scope: './' })
+                .then((registration) => {
+                    console.log('[TaskVerse PWA] Service Worker registered with scope:', registration.scope);
+
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        if (newWorker) {
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('[TaskVerse PWA] New version installed and ready.');
+                                }
+                            });
+                        }
+                    });
+                })
+                .catch((error) => {
+                    console.warn('[TaskVerse PWA] Service Worker registration failed:', error);
+                });
+        });
+    }
+
+    // 2. Elements
+    const installAppBtn = document.getElementById('installAppBtn');
+    const sidebarInstallBtn = document.getElementById('sidebarInstallAppBtn');
+    const installModal = document.getElementById('installModal');
+    const closeInstallModalBtn = document.getElementById('closeInstallModalBtn');
+    const dismissInstallBtn = document.getElementById('dismissInstallBtn');
+    const triggerNativeInstallBtn = document.getElementById('triggerNativeInstallBtn');
+    const gotItIosBtn = document.getElementById('gotItIosBtn');
+    const gotItFallbackBtn = document.getElementById('gotItFallbackBtn');
+
+    const installPromptSection = document.getElementById('installPromptSection');
+    const installIosSection = document.getElementById('installIosSection');
+    const installFallbackSection = document.getElementById('installFallbackSection');
+
+    // 3. Standalone mode check (already installed)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+
+    if (!isStandalone) {
+        if (installAppBtn) installAppBtn.style.display = 'inline-flex';
+        if (sidebarInstallBtn) sidebarInstallBtn.style.display = 'flex';
+    }
+
+    // 4. Native beforeinstallprompt capture (Chrome, Edge, Android)
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+
+        if (!isStandalone) {
+            if (installAppBtn) installAppBtn.style.display = 'inline-flex';
+            if (sidebarInstallBtn) sidebarInstallBtn.style.display = 'flex';
+        }
+    });
+
+    window.addEventListener('appinstalled', () => {
+        console.log('[TaskVerse PWA] Application installed successfully.');
+        deferredInstallPrompt = null;
+        if (installAppBtn) installAppBtn.style.display = 'none';
+        if (sidebarInstallBtn) sidebarInstallBtn.style.display = 'none';
+        closeInstallModal();
+        showToast('TaskVerse installed successfully!', 'success');
+    });
+
+    function openInstallModal() {
+        if (!installModal) return;
+
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const isIOS = /iphone|ipad|ipod/.test(userAgent) && !window.MSStream;
+
+        if (deferredInstallPrompt) {
+            if (installPromptSection) installPromptSection.style.display = 'block';
+            if (installIosSection) installIosSection.style.display = 'none';
+            if (installFallbackSection) installFallbackSection.style.display = 'none';
+        } else if (isIOS) {
+            if (installPromptSection) installPromptSection.style.display = 'none';
+            if (installIosSection) installIosSection.style.display = 'block';
+            if (installFallbackSection) installFallbackSection.style.display = 'none';
+        } else {
+            if (installPromptSection) installPromptSection.style.display = 'none';
+            if (installIosSection) installIosSection.style.display = 'none';
+            if (installFallbackSection) installFallbackSection.style.display = 'block';
+        }
+
+        installModal.style.display = 'flex';
+    }
+
+    function closeInstallModal() {
+        if (installModal) installModal.style.display = 'none';
+    }
+
+    if (installAppBtn) {
+        installAppBtn.addEventListener('click', () => {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult && choiceResult.outcome === 'accepted') {
+                        console.log('[TaskVerse PWA] User accepted the install prompt');
+                    }
+                    deferredInstallPrompt = null;
+                });
+            } else {
+                openInstallModal();
+            }
+        });
+    }
+
+    if (sidebarInstallBtn) {
+        sidebarInstallBtn.addEventListener('click', () => {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult && choiceResult.outcome === 'accepted') {
+                        console.log('[TaskVerse PWA] User accepted the install prompt');
+                    }
+                    deferredInstallPrompt = null;
+                });
+            } else {
+                openInstallModal();
+            }
+        });
+    }
+
+    if (triggerNativeInstallBtn) {
+        triggerNativeInstallBtn.addEventListener('click', () => {
+            closeInstallModal();
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult && choiceResult.outcome === 'accepted') {
+                        console.log('[TaskVerse PWA] User accepted the install prompt');
+                    }
+                    deferredInstallPrompt = null;
+                });
+            }
+        });
+    }
+
+    if (closeInstallModalBtn) closeInstallModalBtn.addEventListener('click', closeInstallModal);
+    if (dismissInstallBtn) dismissInstallBtn.addEventListener('click', closeInstallModal);
+    if (gotItIosBtn) gotItIosBtn.addEventListener('click', closeInstallModal);
+    if (gotItFallbackBtn) gotItFallbackBtn.addEventListener('click', closeInstallModal);
+    if (installModal) {
+        installModal.addEventListener('click', (e) => {
+            if (e.target === installModal) closeInstallModal();
+        });
+    }
+}
+
