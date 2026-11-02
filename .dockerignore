@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+*.bat
+*.ps1
+build/
+target/
+*.war
+db/db.properties
+db/backup*.sql
+webapp/WEB-INF/classes/db.properties
+README.md
