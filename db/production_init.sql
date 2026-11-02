@@ -58,7 +58,7 @@ ON DUPLICATE KEY UPDATE is_system = TRUE;
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tasks (
     task_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NULL,
+    user_id INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     priority ENUM('Low', 'Medium', 'High') NOT NULL DEFAULT 'Medium',
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notes (
     note_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NULL,
+    user_id INT NOT NULL,
     title VARCHAR(255) NOT NULL DEFAULT 'Untitled Note',
     content TEXT,
     color VARCHAR(20) NOT NULL DEFAULT 'yellow',
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS notes (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS task_points (
     point_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NULL,
+    user_id INT NOT NULL,
     task_id INT NOT NULL,
     task_title VARCHAR(255) NOT NULL,
     priority ENUM('Low', 'Medium', 'High') NOT NULL,
