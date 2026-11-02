@@ -5280,29 +5280,36 @@ body {
    Mobile-First Breakpoint Polish (<= 768px: Android & iPhone)
    ========================================================================== */
 @media (max-width: 768px) {
-    /* Main container padding adjustments to accommodate bottom navigation */
+    /* Main container padding adjustments to accommodate floating bottom navigation */
     .main-content {
-        padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
         overflow-x: hidden;
     }
 
-    /* Fixed Liquid Glass Bottom Navigation */
+    /* Compact Floating Liquid Glass Bottom Navigation */
     .mobile-bottom-nav {
-        display: flex;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: calc(62px + env(safe-area-inset-bottom, 0px));
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-        background: rgba(14, 9, 32, 0.94);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-top: 1px solid rgba(168, 85, 247, 0.28);
-        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.55), 0 -1px 8px rgba(139, 92, 246, 0.15);
-        z-index: 2200;
-        justify-content: space-around;
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
         align-items: center;
+        justify-items: center;
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+        max-width: 440px;
+        margin: 0 auto;
+        height: 52px;
+        padding: 3px 2px;
+        background: rgba(18, 12, 38, 0.90);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(168, 85, 247, 0.22);
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(139, 92, 246, 0.12);
+        z-index: 2200;
+        box-sizing: border-box;
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .mobile-nav-item {
@@ -5310,64 +5317,150 @@ body {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        flex: 1;
+        width: 100%;
         height: 100%;
+        padding: 3px 1px;
+        box-sizing: border-box;
+        border-radius: 10px;
         text-decoration: none;
-        color: var(--text-muted);
-        font-size: 0.68rem;
-        font-weight: 500;
-        gap: 3px;
-        transition: all 0.2s ease;
+        color: #8b92a9;
+        background: transparent;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         -webkit-tap-highlight-color: transparent;
-        padding: 4px 0;
+        outline: none;
+        gap: 2px;
+    }
+
+    .mobile-nav-item:active {
+        transform: scale(0.95);
     }
 
     .mobile-nav-icon {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
     }
 
-    .mobile-nav-item svg {
+    .mobile-nav-icon svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+        stroke-width: 2;
         transition: transform 0.2s ease, stroke 0.2s ease;
     }
 
+    .mobile-nav-label {
+        font-size: 9.5px;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: -0.15px;
+        color: inherit;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+    /* Active Navigation Item — Subtle Purple Pill Highlight */
     .mobile-nav-item.active {
         color: #c4b5fd;
-        font-weight: 700;
+        background: rgba(139, 92, 246, 0.15);
+        border-color: rgba(168, 85, 247, 0.24);
     }
 
     .mobile-nav-item.active .mobile-nav-icon svg {
         stroke: #c4b5fd;
-        transform: translateY(-1px) scale(1.08);
-        filter: drop-shadow(0 0 6px rgba(196, 181, 253, 0.55));
+        transform: scale(1.06);
     }
 
-    /* Floating Center Quick Add Action Button */
-    .mobile-nav-fab {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: var(--primary-gradient);
-        border: 2px solid rgba(255, 255, 255, 0.22);
+    .mobile-nav-item.active .mobile-nav-label {
+        color: #c4b5fd;
+        font-weight: 700;
+    }
+
+    /* Center Quick Add Action Button */
+    .mobile-nav-add-btn {
+        background: transparent;
+        border: 1px solid transparent;
+    }
+
+    .mobile-add-badge {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+        border: 1px solid rgba(255, 255, 255, 0.22);
         color: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 4px 18px rgba(124, 58, 237, 0.55), 0 0 10px rgba(168, 85, 247, 0.4);
-        transform: translateY(-10px);
+        box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
         flex-shrink: 0;
-        margin: 0 2px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        -webkit-tap-highlight-color: transparent;
     }
 
-    .mobile-nav-fab:active {
-        transform: translateY(-8px) scale(0.94);
-        box-shadow: 0 2px 10px rgba(124, 58, 237, 0.4);
+    .mobile-add-badge svg {
+        width: 15px;
+        height: 15px;
+        stroke: #ffffff;
+        stroke-width: 2.5;
+    }
+
+    .mobile-nav-add-btn:active .mobile-add-badge {
+        transform: scale(0.92);
+        box-shadow: 0 1px 3px rgba(124, 58, 237, 0.3);
+    }
+
+    .mobile-nav-add-btn .mobile-nav-label {
+        color: #a78bfa;
+        font-weight: 600;
+    }
+
+    .mobile-nav-add-btn:active .mobile-nav-label {
+        color: #c4b5fd;
+    }
+
+    /* Ultra-narrow devices (<= 350px) */
+    @media (max-width: 350px) {
+        .mobile-bottom-nav {
+            left: 6px;
+            right: 6px;
+            height: 48px;
+            padding: 2px 1px;
+            border-radius: 14px;
+        }
+
+        .mobile-nav-icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        .mobile-nav-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .mobile-add-badge {
+            width: 24px;
+            height: 24px;
+            border-radius: 7px;
+        }
+
+        .mobile-add-badge svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .mobile-nav-label {
+            font-size: 8.5px;
+            letter-spacing: -0.3px;
+        }
     }
 
     /* Hide desktop top nav bar on mobile to avoid double navigation */
